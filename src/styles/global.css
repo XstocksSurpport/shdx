@@ -289,8 +289,32 @@ input, select {
 
 .main-grid {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 1fr 1fr;
   gap: 24px;
+}
+
+.widgets-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.balance-row span:last-child {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* Info panel */
@@ -497,14 +521,6 @@ input, select {
   cursor: not-allowed;
 }
 
-.payment-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-align: center;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
 .status-msg {
   margin-top: 12px;
   font-size: 13px;
@@ -545,6 +561,10 @@ input, select {
   }
 
   .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .widgets-panel {
     grid-template-columns: 1fr;
   }
 

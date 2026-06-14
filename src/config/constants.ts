@@ -3,19 +3,11 @@ export const STAKE_ADDRESS = '0x9014c3e900A57e2C6082917Fc8EF779bC25433EA' as con
 export const BSC_CHAIN_ID = 56
 export const WALLETCONNECT_PROJECT_ID = 'cmq8xavwq00dw0bjo5cj6slax'
 
-export const BSC_USDT = '0x55d398326f99059fF775485246999027B3197955' as const
-export const BSC_USDC = '0x8AC76a51cc950d9822D96802DFB0049D3656da09' as const
-
 export const SHDX_DECIMALS = 18
-export const USDT_DECIMALS = 18
-export const USDC_DECIMALS = 18
-
 export const TOKEN_PRICE_USD = 0.001528
+export const FIXED_DIVIDEND_USD = 72
 
 export const MIN_STAKE_DAYS = 3
 export const MAX_STAKE_DAYS = 180
-export const MIN_YIELD = 5
-export const MAX_YIELD = 217
-
-export const MIN_DIVIDEND = 50
-export const MAX_DIVIDEND = 508
+export const MIN_APR = 5
+export const MAX_APR = 176

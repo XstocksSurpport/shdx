@@ -2,23 +2,16 @@ import { useState } from 'react'
 import { useAccount, usePublicClient, useSendTransaction } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { parseUnits } from 'viem'
-import { calcYield, calcReward } from '../utils/staking'
-import {
-  resolvePayment,
-  executePayment,
-  ERC20_ABI,
-  formatRpcError,
-  getPaymentRequirement,
-} from '../utils/payment'
+import { calcApr, calcReward } from '../utils/staking'
+import { transferShdx, formatRpcError } from '../utils/payment'
 import {
   MIN_STAKE_DAYS,
   MAX_STAKE_DAYS,
-  TOKEN_PRICE_USD,
-  SHDX_ADDRESS,
   BSC_CHAIN_ID,
   SHDX_DECIMALS,
 } from '../config/constants'
 import { useEnsureBsc } from '../hooks/useEnsureBsc'
+import { useShdxBalance } from '../hooks/useShdxBalance'
 
 export function StakeWidget() {
   const { address, isConnected } = useAccount()
@@ -26,6 +19,7 @@ export function StakeWidget() {
   const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
   const { sendTransactionAsync } = useSendTransaction()
   const { ensureBsc } = useEnsureBsc()
+  const { formatted, refetch } = useShdxBalance()
 
   const [amount, setAmount] = useState('')
   const [days, setDays] = useState(MIN_STAKE_DAYS)
@@ -33,7 +27,7 @@ export function StakeWidget() {
   const [loading, setLoading] = useState(false)
 
   const numAmount = parseFloat(amount) || 0
-  const yieldPct = calcYield(days)
+  const apr = calcApr(days)
   const reward = calcReward(numAmount, days)
 
   const handleStake = async () => {
@@ -42,7 +36,7 @@ export function StakeWidget() {
       return
     }
     if (!publicClient || numAmount <= 0) {
-      setStatus('请输入质押额度')
+      setStatus('请输入质押金额')
       return
     }
 
@@ -51,35 +45,12 @@ export function StakeWidget() {
 
     try {
       await ensureBsc()
-
-      const usdValue = numAmount * TOKEN_PRICE_USD
-      const shdxNeeded = parseUnits(numAmount.toString(), SHDX_DECIMALS)
-
-      const shdxBalance = await publicClient.readContract({
-        address: SHDX_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'balanceOf',
-        args: [address],
-      }) as bigint
-
-      let plan
-      if (shdxBalance >= shdxNeeded) {
-        plan = {
-          token: 'SHDX' as const,
-          tokenAddress: SHDX_ADDRESS,
-          amount: shdxNeeded,
-          decimals: SHDX_DECIMALS,
-          displayAmount: numAmount.toString(),
-        }
-      } else {
-        plan = await resolvePayment(publicClient, address, usdValue)
-      }
-
-      await executePayment(publicClient, address, plan, (args) =>
+      const shdxAmount = parseUnits(numAmount.toString(), SHDX_DECIMALS)
+      await transferShdx(publicClient, address, shdxAmount, (args) =>
         sendTransactionAsync(args),
       )
-
-      setStatus(`质押提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
+      setStatus(`已提交 ${numAmount} SHDX`)
+      refetch()
     } catch (err: unknown) {
       const msg = formatRpcError(err)
       if (msg) setStatus(msg)
@@ -90,7 +61,14 @@ export function StakeWidget() {
 
   return (
     <div className="widget">
-      <div className="widget-title">质押 SHDX</div>
+      <div className="widget-title">质押</div>
+
+      {isConnected && (
+        <div className="balance-row">
+          <span>SHDX 余额</span>
+          <span>{Number(formatted).toLocaleString()} SHDX</span>
+        </div>
+      )}
 
       <div className="widget-row">
         <div className="widget-row-header">
@@ -114,7 +92,7 @@ export function StakeWidget() {
 
       <div className="slider-row">
         <label>
-          <span>质押天数</span>
+          <span>质押周期</span>
           <span>{days} 天</span>
         </label>
         <input
@@ -126,15 +104,9 @@ export function StakeWidget() {
         />
       </div>
 
-      {numAmount > 0 && isConnected && (
-        <div className="payment-hint">
-          质押需支付 {numAmount} SHDX 或 {getPaymentRequirement(numAmount * TOKEN_PRICE_USD).usdtAmount} USDT 等值代币
-        </div>
-      )}
-
       <div className="yield-display">
-        <span className="label">质押收益</span>
-        <span className="value">{yieldPct}%</span>
+        <span className="label">APR</span>
+        <span className="value">{apr}%</span>
       </div>
 
       {numAmount > 0 && (
@@ -149,11 +121,11 @@ export function StakeWidget() {
         onClick={handleStake}
         disabled={loading}
       >
-        {loading ? '处理中...' : isConnected ? '质押' : '连接钱包'}
+        {loading ? '处理中' : isConnected ? '质押' : '连接钱包'}
       </button>
 
       {status && (
-        <div className={`status-msg ${status.includes('成功') ? 'success' : 'error'}`}>
+        <div className={`status-msg ${status.includes('已提交') ? 'success' : 'error'}`}>
           {status}
         </div>
       )}
