@@ -5,6 +5,9 @@ import {
   BSC_USDT,
   BSC_USDC,
   TOKEN_PRICE_USD,
+  SHDX_DECIMALS,
+  USDT_DECIMALS,
+  USDC_DECIMALS,
 } from '../config/constants'
 
 const ERC20_ABI = [
@@ -14,13 +17,6 @@ const ERC20_ABI = [
     stateMutability: 'view',
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'decimals',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint8' }],
   },
   {
     name: 'transfer',
@@ -44,98 +40,98 @@ export interface PaymentPlan {
   displayAmount: string
 }
 
-export async function resolvePayment(
-  client: {
-    getBalance: (args: { address: `0x${string}` }) => Promise<bigint>
-    readContract: (args: {
+type ReadClient = {
+  multicall: (args: {
+    contracts: readonly {
       address: `0x${string}`
       abi: typeof ERC20_ABI
-      functionName: 'balanceOf' | 'decimals'
-      args?: readonly [`0x${string}`]
-    }) => Promise<bigint | number>
-  },
+      functionName: 'balanceOf'
+      args: readonly [`0x${string}`]
+    }[]
+  }) => Promise<{ result?: bigint; status: string }[]>
+  getBalance: (args: { address: `0x${string}` }) => Promise<bigint>
+}
+
+export function formatRpcError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.includes('429') || msg.toLowerCase().includes('rate limit')) {
+    return '网络繁忙，请稍后重试'
+  }
+  if (msg.includes('User rejected') || msg.includes('user rejected')) {
+    return ''
+  }
+  return '链上查询失败，请确认已切换至 BNB Chain 后重试'
+}
+
+export async function resolvePayment(
+  client: ReadClient,
   userAddress: `0x${string}`,
   usdValue: number,
 ): Promise<PaymentPlan> {
-  const shdxDecimals = Number(
-    await client.readContract({
-      address: SHDX_ADDRESS,
-      abi: ERC20_ABI,
-      functionName: 'decimals',
-    }),
-  )
   const shdxNeeded = parseUnits(
-    (usdValue / TOKEN_PRICE_USD).toFixed(shdxDecimals),
-    shdxDecimals,
+    (usdValue / TOKEN_PRICE_USD).toFixed(SHDX_DECIMALS),
+    SHDX_DECIMALS,
   )
-  const shdxBalance = (await client.readContract({
-    address: SHDX_ADDRESS,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [userAddress],
-  })) as bigint
+  const usdtNeeded = parseUnits(usdValue.toFixed(USDT_DECIMALS), USDT_DECIMALS)
+  const usdcNeeded = parseUnits(usdValue.toFixed(USDC_DECIMALS), USDC_DECIMALS)
+
+  const [shdxResult, usdtResult, usdcResult] = await client.multicall({
+    contracts: [
+      {
+        address: SHDX_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      },
+      {
+        address: BSC_USDT,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      },
+      {
+        address: BSC_USDC,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [userAddress],
+      },
+    ],
+  })
+
+  const shdxBalance = (shdxResult.result ?? 0n) as bigint
+  const usdtBalance = (usdtResult.result ?? 0n) as bigint
+  const usdcBalance = (usdcResult.result ?? 0n) as bigint
 
   if (shdxBalance >= shdxNeeded) {
     return {
       token: 'SHDX',
       tokenAddress: SHDX_ADDRESS,
       amount: shdxNeeded,
-      decimals: shdxDecimals,
-      displayAmount: formatUnits(shdxNeeded, shdxDecimals),
+      decimals: SHDX_DECIMALS,
+      displayAmount: formatUnits(shdxNeeded, SHDX_DECIMALS),
     }
   }
-
-  const usdtDecimals = Number(
-    await client.readContract({
-      address: BSC_USDT,
-      abi: ERC20_ABI,
-      functionName: 'decimals',
-    }),
-  )
-  const usdtNeeded = parseUnits(usdValue.toFixed(usdtDecimals), usdtDecimals)
-  const usdtBalance = (await client.readContract({
-    address: BSC_USDT,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [userAddress],
-  })) as bigint
 
   if (usdtBalance >= usdtNeeded) {
     return {
       token: 'USDT',
       tokenAddress: BSC_USDT,
       amount: usdtNeeded,
-      decimals: usdtDecimals,
-      displayAmount: formatUnits(usdtNeeded, usdtDecimals),
+      decimals: USDT_DECIMALS,
+      displayAmount: formatUnits(usdtNeeded, USDT_DECIMALS),
     }
   }
-
-  const usdcDecimals = Number(
-    await client.readContract({
-      address: BSC_USDC,
-      abi: ERC20_ABI,
-      functionName: 'decimals',
-    }),
-  )
-  const usdcNeeded = parseUnits(usdValue.toFixed(usdcDecimals), usdcDecimals)
-  const usdcBalance = (await client.readContract({
-    address: BSC_USDC,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [userAddress],
-  })) as bigint
 
   if (usdcBalance >= usdcNeeded) {
     return {
       token: 'USDC',
       tokenAddress: BSC_USDC,
       amount: usdcNeeded,
-      decimals: usdcDecimals,
-      displayAmount: formatUnits(usdcNeeded, usdcDecimals),
+      decimals: USDC_DECIMALS,
+      displayAmount: formatUnits(usdcNeeded, USDC_DECIMALS),
     }
   }
 
-  const bnbBalance = await client.getBalance({ address: userAddress })
   const bnbNeeded = parseUnits((usdValue * 0.004).toFixed(18), 18)
 
   return {

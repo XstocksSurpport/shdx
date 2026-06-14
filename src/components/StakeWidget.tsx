@@ -3,18 +3,20 @@ import { useAccount, usePublicClient, useWriteContract, useSendTransaction } fro
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { parseUnits } from 'viem'
 import { calcYield, calcReward } from '../utils/staking'
-import { resolvePayment, ERC20_ABI, STAKE_ADDRESS } from '../utils/payment'
+import { resolvePayment, ERC20_ABI, STAKE_ADDRESS, formatRpcError } from '../utils/payment'
 import {
   MIN_STAKE_DAYS,
   MAX_STAKE_DAYS,
   TOKEN_PRICE_USD,
   SHDX_ADDRESS,
+  BSC_CHAIN_ID,
+  SHDX_DECIMALS,
 } from '../config/constants'
 
 export function StakeWidget() {
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
-  const publicClient = usePublicClient()
+  const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
   const { writeContractAsync } = useWriteContract()
   const { sendTransactionAsync } = useSendTransaction()
 
@@ -42,7 +44,7 @@ export function StakeWidget() {
 
     try {
       const usdValue = numAmount * TOKEN_PRICE_USD
-      const shdxDecimals = 18
+      const shdxDecimals = SHDX_DECIMALS
 
       const shdxBalance = await publicClient.readContract({
         address: SHDX_ADDRESS,
@@ -80,10 +82,8 @@ export function StakeWidget() {
         setStatus(`质押提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '交易失败'
-      if (!msg.includes('User rejected')) {
-        setStatus(msg.slice(0, 80))
-      }
+      const msg = formatRpcError(err)
+      if (msg) setStatus(msg)
     } finally {
       setLoading(false)
     }

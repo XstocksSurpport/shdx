@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useAccount, usePublicClient, useWriteContract, useSendTransaction } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { getWalletDividend, formatUsd } from '../utils/dividend'
-import { resolvePayment, ERC20_ABI, STAKE_ADDRESS } from '../utils/payment'
-import { TOKEN_PRICE_USD } from '../config/constants'
+import { resolvePayment, ERC20_ABI, STAKE_ADDRESS, formatRpcError } from '../utils/payment'
+import { TOKEN_PRICE_USD, BSC_CHAIN_ID } from '../config/constants'
 
 export function ClaimWidget() {
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
-  const publicClient = usePublicClient()
+  const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
   const { writeContractAsync } = useWriteContract()
   const { sendTransactionAsync } = useSendTransaction()
   const [status, setStatus] = useState('')
@@ -45,10 +45,8 @@ export function ClaimWidget() {
 
       setStatus(`领取提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '交易失败'
-      if (!msg.includes('User rejected')) {
-        setStatus(msg.slice(0, 80))
-      }
+      const msg = formatRpcError(err)
+      if (msg) setStatus(msg)
     } finally {
       setLoading(false)
     }
