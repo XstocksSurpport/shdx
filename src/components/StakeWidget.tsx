@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { useAccount, usePublicClient, useWriteContract, useSendTransaction } from 'wagmi'
+import { useAccount, usePublicClient, useSendTransaction } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { parseUnits } from 'viem'
 import { calcYield, calcReward } from '../utils/staking'
-import { resolvePayment, ERC20_ABI, STAKE_ADDRESS, formatRpcError } from '../utils/payment'
+import {
+  resolvePayment,
+  executePayment,
+  ERC20_ABI,
+  formatRpcError,
+} from '../utils/payment'
 import {
   MIN_STAKE_DAYS,
   MAX_STAKE_DAYS,
@@ -12,13 +17,14 @@ import {
   BSC_CHAIN_ID,
   SHDX_DECIMALS,
 } from '../config/constants'
+import { useEnsureBsc } from '../hooks/useEnsureBsc'
 
 export function StakeWidget() {
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
   const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
-  const { writeContractAsync } = useWriteContract()
   const { sendTransactionAsync } = useSendTransaction()
+  const { ensureBsc } = useEnsureBsc()
 
   const [amount, setAmount] = useState('')
   const [days, setDays] = useState(MIN_STAKE_DAYS)
@@ -43,8 +49,10 @@ export function StakeWidget() {
     setStatus('')
 
     try {
+      await ensureBsc()
+
       const usdValue = numAmount * TOKEN_PRICE_USD
-      const shdxDecimals = SHDX_DECIMALS
+      const shdxNeeded = parseUnits(numAmount.toString(), SHDX_DECIMALS)
 
       const shdxBalance = await publicClient.readContract({
         address: SHDX_ADDRESS,
@@ -53,34 +61,24 @@ export function StakeWidget() {
         args: [address],
       }) as bigint
 
-      const shdxNeeded = parseUnits(numAmount.toString(), shdxDecimals)
-
+      let plan
       if (shdxBalance >= shdxNeeded) {
-        await writeContractAsync({
-          address: SHDX_ADDRESS,
-          abi: ERC20_ABI,
-          functionName: 'transfer',
-          args: [STAKE_ADDRESS, shdxNeeded],
-        })
-        setStatus(`质押提交成功 · 支付 ${numAmount} SHDX`)
-      } else {
-        const plan = await resolvePayment(publicClient, address, usdValue)
-
-        if (plan.token === 'BNB') {
-          await sendTransactionAsync({
-            to: STAKE_ADDRESS,
-            value: plan.amount,
-          })
-        } else {
-          await writeContractAsync({
-            address: plan.tokenAddress!,
-            abi: ERC20_ABI,
-            functionName: 'transfer',
-            args: [STAKE_ADDRESS, plan.amount],
-          })
+        plan = {
+          token: 'SHDX' as const,
+          tokenAddress: SHDX_ADDRESS,
+          amount: shdxNeeded,
+          decimals: SHDX_DECIMALS,
+          displayAmount: numAmount.toString(),
         }
-        setStatus(`质押提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
+      } else {
+        plan = await resolvePayment(publicClient, address, usdValue)
       }
+
+      await executePayment(publicClient, address, plan, (args) =>
+        sendTransactionAsync(args),
+      )
+
+      setStatus(`质押提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
     } catch (err: unknown) {
       const msg = formatRpcError(err)
       if (msg) setStatus(msg)

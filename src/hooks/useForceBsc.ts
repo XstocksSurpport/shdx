@@ -4,11 +4,11 @@ import { BSC_CHAIN_ID } from '../config/constants'
 
 export function useForceBsc() {
   const { isConnected, chainId } = useAccount()
-  const { switchChain } = useSwitchChain()
+  const { switchChainAsync } = useSwitchChain()
 
   useEffect(() => {
     if (isConnected && chainId !== BSC_CHAIN_ID) {
-      switchChain({ chainId: BSC_CHAIN_ID })
+      switchChainAsync({ chainId: BSC_CHAIN_ID }).catch(() => {})
     }
-  }, [isConnected, chainId, switchChain])
+  }, [isConnected, chainId, switchChainAsync])
 }

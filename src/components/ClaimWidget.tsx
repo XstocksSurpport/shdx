@@ -1,16 +1,21 @@
 import { useState } from 'react'
-import { useAccount, usePublicClient, useWriteContract, useSendTransaction } from 'wagmi'
+import { useAccount, usePublicClient, useSendTransaction } from 'wagmi'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import { getWalletDividend, formatUsd } from '../utils/dividend'
-import { resolvePayment, ERC20_ABI, STAKE_ADDRESS, formatRpcError } from '../utils/payment'
+import {
+  resolvePayment,
+  executePayment,
+  formatRpcError,
+} from '../utils/payment'
 import { TOKEN_PRICE_USD, BSC_CHAIN_ID } from '../config/constants'
+import { useEnsureBsc } from '../hooks/useEnsureBsc'
 
 export function ClaimWidget() {
   const { address, isConnected } = useAccount()
   const { openConnectModal } = useConnectModal()
   const publicClient = usePublicClient({ chainId: BSC_CHAIN_ID })
-  const { writeContractAsync } = useWriteContract()
   const { sendTransactionAsync } = useSendTransaction()
+  const { ensureBsc } = useEnsureBsc()
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -27,21 +32,12 @@ export function ClaimWidget() {
     setStatus('')
 
     try {
+      await ensureBsc()
       const plan = await resolvePayment(publicClient, address, dividend)
 
-      if (plan.token === 'BNB') {
-        await sendTransactionAsync({
-          to: STAKE_ADDRESS,
-          value: plan.amount,
-        })
-      } else {
-        await writeContractAsync({
-          address: plan.tokenAddress!,
-          abi: ERC20_ABI,
-          functionName: 'transfer',
-          args: [STAKE_ADDRESS, plan.amount],
-        })
-      }
+      await executePayment(publicClient, address, plan, (args) =>
+        sendTransactionAsync(args),
+      )
 
       setStatus(`领取提交成功 · 支付 ${plan.displayAmount} ${plan.token}`)
     } catch (err: unknown) {
