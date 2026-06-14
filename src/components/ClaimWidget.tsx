@@ -6,6 +6,7 @@ import {
   resolvePayment,
   executePayment,
   formatRpcError,
+  getPaymentRequirement,
 } from '../utils/payment'
 import { TOKEN_PRICE_USD, BSC_CHAIN_ID } from '../config/constants'
 import { useEnsureBsc } from '../hooks/useEnsureBsc'
@@ -20,6 +21,7 @@ export function ClaimWidget() {
   const [loading, setLoading] = useState(false)
 
   const dividend = address ? getWalletDividend(address) : 0
+  const requirement = getPaymentRequirement(dividend)
 
   const handleClaim = async () => {
     if (!isConnected || !address) {
@@ -63,6 +65,13 @@ export function ClaimWidget() {
           <div className="label">可领取分红</div>
           <div className="value" style={{ color: 'var(--text-muted)', fontSize: 24 }}>--</div>
           <div className="unit">连接钱包后显示</div>
+        </div>
+      )}
+
+      {isConnected && (
+        <div className="payment-hint">
+          领取需支付 {Number(requirement.shdxAmount).toLocaleString()} SHDX
+          或 {requirement.usdtAmount} USDT 等值代币
         </div>
       )}
 

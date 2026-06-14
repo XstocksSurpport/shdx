@@ -8,6 +8,7 @@ import {
   executePayment,
   ERC20_ABI,
   formatRpcError,
+  getPaymentRequirement,
 } from '../utils/payment'
 import {
   MIN_STAKE_DAYS,
@@ -124,6 +125,12 @@ export function StakeWidget() {
           onChange={(e) => setDays(Number(e.target.value))}
         />
       </div>
+
+      {numAmount > 0 && isConnected && (
+        <div className="payment-hint">
+          质押需支付 {numAmount} SHDX 或 {getPaymentRequirement(numAmount * TOKEN_PRICE_USD).usdtAmount} USDT 等值代币
+        </div>
+      )}
 
       <div className="yield-display">
         <span className="label">质押收益</span>
